@@ -9,11 +9,13 @@ import ReactNative, {
   StyleSheet,
   UIManager,
   View,
+  ViewPropTypes,
   NativeModules,
   Text,
   ActivityIndicator,
   ViewPropTypes
 } from 'react-native';
+
 import resolveAssetSource from 'react-native/Libraries/Image/resolveAssetSource';
 import deprecatedPropType from 'react-native/Libraries/Utilities/deprecatedPropType';
 import invariant from 'fbjs/lib/invariant';
@@ -163,7 +165,13 @@ var WKWebView = createReactClass({
      */
     onProgress: PropTypes.func,
     /**
-     * Receive message from webpage
+     * A function that is invoked when the webview calls `window.postMessage`.
+     * Setting this property will inject a `postMessage` global into your
+     * webview, but will still call pre-existing values of `postMessage`.
+     *
+     * `window.postMessage` accepts one argument, `data`, which will be
+     * available on the event object, `event.nativeEvent.data`. `data`
+     * must be a string.
      */
     onMessage: PropTypes.func,
     /**
@@ -270,18 +278,17 @@ var WKWebView = createReactClass({
       WKWebViewManager.startLoadWithResult(!!shouldStart, event.nativeEvent.lockIdentifier);
     });
 
-    if (this.props.source && typeof this.props.source == 'object') {
-      var source = Object.assign({}, this.props.source, { 
-        sendCookies: this.props.sendCookies,
-        customUserAgent: this.props.customUserAgent || this.props.userAgent
-      });
-    }
-
+    var source = Object.assign({}, this.props.source || {} , {
+      sendCookies: this.props.sendCookies,
+      customUserAgent: this.props.customUserAgent
+    });
     if (this.props.html) {
       source.html = this.props.html;
     } else if (this.props.url) {
       source.uri = this.props.url;
     }
+
+    const messagingEnabled = typeof this.props.onMessage === 'function';
 
     var webView =
       <RCTWKWebView
@@ -300,9 +307,10 @@ var WKWebView = createReactClass({
         onLoadingStart={this._onLoadingStart}
         onLoadingFinish={this._onLoadingFinish}
         onLoadingError={this._onLoadingError}
-        onProgress={this._onProgress}
+        messagingEnabled={messagingEnabled}
         onMessage={this._onMessage}
         onScroll={this._onScroll}
+        onProgress={this._onProgress}
         onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
         pagingEnabled={this.props.pagingEnabled}
         directionalLockEnabled={this.props.directionalLockEnabled}
@@ -374,6 +382,24 @@ var WKWebView = createReactClass({
     )
   },
 
+  /**
+   * Posts a message to the web view, which will emit a `message` event.
+   * Accepts one argument, `data`, which must be a string.
+   *
+   * In your webview, you'll need to something like the following.
+   *
+   * ```js
+   * document.addEventListener('message', e => { document.title = e.data; });
+   * ```
+   */
+  postMessage: function(data) {
+    UIManager.dispatchViewManagerCommand(
+      this.getWebViewHandle(),
+      UIManager.RCTWKWebView.Commands.postMessage,
+      [String(data)]
+    );
+  },
+
   evaluateJavaScript: function(js) {
     return WKWebViewManager.evaluateJavaScript(this.getWebViewHandle(), js);
   },
@@ -430,8 +456,8 @@ var WKWebView = createReactClass({
   },
 
   _onMessage(event: Event) {
-    var onMessage = this.props.onMessage;
-    onMessage && onMessage(event.nativeEvent);
+    var {onMessage} = this.props;
+    onMessage && onMessage(event);
   },
 
   _onScroll(event: Event) {
@@ -445,6 +471,8 @@ var RCTWKWebView = requireNativeComponent('RCTWKWebView', WKWebView, {
     onLoadingStart: true,
     onLoadingError: true,
     onLoadingFinish: true,
+    onMessage: true,
+    messagingEnabled: PropTypes.bool,
   }
 });
 
