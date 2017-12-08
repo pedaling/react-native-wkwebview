@@ -9,7 +9,6 @@ import ReactNative, {
   StyleSheet,
   UIManager,
   View,
-  ViewPropTypes,
   NativeModules,
   Text,
   ActivityIndicator,
